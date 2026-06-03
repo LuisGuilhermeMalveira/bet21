@@ -1,0 +1,17 @@
+# Segredos
+.env
+
+# Banco e backups (dados do usuário — valiosos, mas locais)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/backups/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db

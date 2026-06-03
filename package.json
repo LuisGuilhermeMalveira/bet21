@@ -1,0 +1,18 @@
+{
+  "name": "bet21",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bet21 — disparador caseiro de sinais de over de escanteios (uso pessoal, sem garantia de lucro).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "test": "node --no-warnings --experimental-sqlite --test",
+    "test:watch": "node --no-warnings --experimental-sqlite --test --watch",
+    "db:check": "node --no-warnings --experimental-sqlite scripts/db-check.js",
+    "backfill": "node --no-warnings --experimental-sqlite scripts/backfill.js",
+    "dashboard": "node --no-warnings --experimental-sqlite scripts/dashboard.js",
+    "start": "node --no-warnings --experimental-sqlite scripts/dashboard.js"
+  }
+}

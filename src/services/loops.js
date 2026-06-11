@@ -10,7 +10,8 @@ import { logEvent } from '../db/index.js';
 import { broadcastEvent } from '../server/server.js';
 import { captureFixtureOdds } from './oddsCapture.js';
 import { runSettle } from './settle.js';
-import { evaluateLiveFixture, processDecisions } from './liveEngine.js';
+import { evaluateLiveFixture, processDecisions, buildWindowSpecs } from './liveEngine.js';
+import { parseLiveCornerLines } from '../api/oddsParser.js';
 import { computePressure } from '../model/pressure.js';
 import { predictFixture } from './backtest.js';
 import { parseTeamStatistics } from '../api/statsParser.js';
@@ -194,6 +195,12 @@ export function buildLiveSnapshot(fx, state, evalResult, now = Date.now()) {
     overOdd: d?.overOdd ?? null,
     prob: d?.prob ?? null,
     ev: d?.ev ?? null,
+    oddsSource: state.oddsSource || 'pregame',
+    // Todas as janelas avaliadas, com a razão de cada uma (pro diagnóstico e pra aba Ao vivo).
+    windows: (evalResult.decisions || []).map((x) => ({
+      market: x.market, fired: !!x.fired, reason: x.reason || null,
+      line: x.line ?? null, ev: x.ev ?? null,
+    })),
     series: pressureSeries(state.samples).map((p) => p.pressure),
     updatedAt: now,
   };
@@ -246,6 +253,20 @@ export async function liveEngineTick(ctx, { now = Date.now() } = {}) {
     // Monta o estado
     const samples = db.prepare('SELECT * FROM live_samples WHERE fixture_id = ? ORDER BY minute ASC').all(fx.id);
     const { full, ht } = linesFromFixture(fx);
+    // Odds AO VIVO: a odd pré-jogo fica obsoleta (a linha sobe com os cantos saindo).
+    // Busca as linhas reais do momento — mas SÓ quando o minuto está numa janela ativa
+    // (fora dela não dispararia mesmo; poupa a chamada).
+    let liveFull = null;
+    const inActiveWindow = buildWindowSpecs(config.settings)
+      .some((s) => s.enabled && minute >= s.minMinute && minute <= s.maxMinute);
+    if (inActiveWindow && typeof ctx.client.getLiveOdds === 'function') {
+      try {
+        const lo = await ctx.client.getLiveOdds(fx.id);
+        const item = Array.isArray(lo?.response) ? lo.response[0] : null;
+        const lines = item ? parseLiveCornerLines(item) : [];
+        if (lines.length > 0) liveFull = lines;
+      } catch { /* sem odds ao vivo → cai no fallback pré-jogo */ }
+    }
     const pred = predictFixture(db, fx.id, config.model);
     const lambdaPregame = pred?.lambda ?? null;
     const tNow = byTeam.get(fx.home_team_id) || {};
@@ -255,7 +276,8 @@ export async function liveEngineTick(ctx, { now = Date.now() } = {}) {
     const state = {
       minute, cornersTotal, htCornersTotal: num(fx.ht_corners_home) != null ? (num(fx.ht_corners_home) + num(fx.ht_corners_away)) : NaN,
       goalsHome, goalsAway, favorite: favoriteFromOdds(fx),
-      lambdaPregame, samples, fullLines: full, htLines: ht,
+      lambdaPregame, samples, fullLines: liveFull || full, htLines: ht,
+      oddsSource: liveFull ? 'live' : 'pregame',
     };
 
     const evalResult = evaluateLiveFixture(state, config);
@@ -286,6 +308,23 @@ export async function liveEngineTick(ctx, { now = Date.now() } = {}) {
   // Poda jogos que não estão mais ao vivo (saíram desde o último tick)
   for (const id of [...ctx.liveState.keys()]) {
     if (!seen.has(id)) ctx.liveState.delete(id);
+  }
+
+  // Diagnóstico: ajuda a entender por que o ao vivo não dispara.
+  if (liveArr.length === 0) {
+    // não loga nada — sem jogos ao vivo no mundo agora é o caso comum
+  } else if (checked === 0) {
+    emit(ctx, { level: 'info', type: 'live', message: `Ao vivo: ${liveArr.length} jogo(s) rolando, mas nenhum é de liga ativa+monitorada agora.`, data: { liveWorld: liveArr.length } });
+  } else if (fired === 0) {
+    // Agrega os motivos das decisões pra você ver o que faltou
+    const reasons = {};
+    for (const id of seen) {
+      const snap = ctx.liveState.get(id);
+      const rs = (snap && snap.windows) ? snap.windows.map((w) => w.reason).filter(Boolean) : [];
+      for (const r of rs) reasons[r] = (reasons[r] || 0) + 1;
+    }
+    const resumo = Object.entries(reasons).map(([r, n]) => `${n}× ${r}`).join('; ') || 'condições não bateram';
+    emit(ctx, { level: 'info', type: 'live', message: `Ao vivo: ${checked} jogo(s) seu(s) em campo, 0 sinais. Motivos: ${resumo}`, data: { checked, reasons } });
   }
 
   return { checked, fired };

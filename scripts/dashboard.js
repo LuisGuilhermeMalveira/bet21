@@ -18,7 +18,9 @@ const secrets = getSecrets();
 const gatekeeper = new ApiGatekeeper({ minIntervalMs: 220, maxPerMinute: 280 });
 const client = secrets.apiKey ? new ApiFootball({ gatekeeper, apiKey: secrets.apiKey }) : null;
 
-const ctx = { db, secrets, gatekeeper, client, engine: { running: false } };
+// Restaura o estado do engine ao vivo do que ficou salvo (sobrevive a reinícios do container).
+const engineWasOn = cfg.get(db, 'settings', 'engine_running') === true;
+const ctx = { db, secrets, gatekeeper, client, engine: { running: engineWasOn } };
 const server = createServer(ctx);
 
 // Aplica "subir com o Windows" conforme a configuração (best-effort).
@@ -35,7 +37,9 @@ server.listen(port, () => {
     // Só inicia os loops se há cliente (senão não há o que automatizar).
     stopLoops = startLoops(ctx);
     console.log('  Loops de fundo ligados (captura, settle, engine ao vivo, backup).\n');
-    console.log('  Dica: ligue o engine no Painel pra ele começar a vigiar os jogos ao vivo.\n');
+    console.log(ctx.engine.running
+      ? '  Engine ao vivo: LIGADO (restaurado). Vigiando jogos ao vivo.\n'
+      : '  Dica: ligue o engine no Painel pra ele começar a vigiar os jogos ao vivo.\n');
   }
 });
 

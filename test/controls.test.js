@@ -4,10 +4,11 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { openDb } from '../src/db/index.js';
-import { cancelBackfillRoute, deleteSignalRoute } from '../src/server/controller.js';
+import { cancelBackfillRoute, deleteSignalRoute, toggleEngine } from '../src/server/controller.js';
 import { runBackfill } from '../src/services/backfill.js';
 import { recordSignal } from '../src/services/liveEngine.js';
 import { dashboardHtml } from '../src/server/html.js';
+import * as cfg from '../src/config/settings.js';
 
 function db0() { return openDb(':memory:'); }
 
@@ -87,4 +88,23 @@ test('switchTab grava o hash e _validTab valida', () => {
   assert.equal(B._validTab('inexistente'), false);
   B.switchTab('sinais');
   assert.equal(dom.window.location.hash, '#sinais');
+});
+
+test('toggleEngine persiste o estado nas configurações', () => {
+  const db = db0();
+  const ctx = { db, engine: { running: false } };
+  toggleEngine(ctx, { on: true });
+  assert.equal(cfg.get(db, 'settings', 'engine_running'), true, 'salvou ligado');
+  assert.equal(ctx.engine.running, true);
+  toggleEngine(ctx, { on: false });
+  assert.equal(cfg.get(db, 'settings', 'engine_running'), false, 'salvou desligado');
+});
+
+test('estado do engine pode ser restaurado do setting (simula reboot)', () => {
+  const db = db0();
+  const ctx = { db, engine: { running: false } };
+  toggleEngine(ctx, { on: true }); // liga e persiste
+  // simula reinício: lê o setting pra montar um ctx novo
+  const restored = cfg.get(db, 'settings', 'engine_running') === true;
+  assert.equal(restored, true, 'após reboot, o engine volta ligado');
 });

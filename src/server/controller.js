@@ -222,6 +222,8 @@ export function setConfig(ctx, body) {
 export function toggleEngine(ctx, body) {
   if (!ctx.engine) ctx.engine = { running: false };
   ctx.engine.running = !!(body && body.on);
+  // Persiste para sobreviver a reinícios do container (Railway reinicia e zeraria a memória).
+  try { cfg.set(ctx.db, 'settings', 'engine_running', ctx.engine.running); } catch { /* ignora */ }
   logEvent(ctx.db, { level: 'info', type: 'engine', message: ctx.engine.running ? 'Engine LIGADO' : 'Engine desligado', data: {} });
   return { running: ctx.engine.running };
 }

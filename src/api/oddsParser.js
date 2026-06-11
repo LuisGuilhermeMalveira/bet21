@@ -227,3 +227,39 @@ export function summarizeOdds(fixtureOdds, bounds) {
     raw,
   };
 }
+
+/**
+ * Extrai as linhas de cantos das ODDS AO VIVO (/odds/live).
+ * O formato live é diferente do pré-jogo: cada mercado tem values com
+ * { value: 'Over'|'Under', odd, handicap: '12.5', suspended }.
+ * A linha vem no handicap (não no texto), e odds suspensas não são apostáveis.
+ *
+ * @param {object} liveItem  item de response[] de /odds/live (tem .odds[])
+ * @param {{min:number,max:number}} [bounds]  faixa plausível de linhas (jogo todo)
+ * @returns {Array<{line:number, overOdd:number, underOdd:number|null, bookmaker:string}>}
+ *          uma entrada por linha disponível, com a melhor odd de over (apostável agora)
+ */
+export function parseLiveCornerLines(liveItem, bounds = { min: 2, max: 30 }) {
+  const byLine = new Map();
+  for (const market of liveItem?.odds || []) {
+    const name = String(market?.name || '').toLowerCase();
+    // mercados de cantos do jogo todo (evita cartões, gols, e mercados de 1º tempo aqui)
+    if (!name.includes('corner')) continue;
+    if (name.includes('1st') || name.includes('first half') || name.includes('half')) continue;
+    if (!(name.includes('over') || name.includes('under') || name.includes('total'))) continue;
+    for (const v of market?.values || []) {
+      if (v?.suspended) continue;                    // odd suspensa = não dá pra apostar
+      const side = String(v?.value || '').toLowerCase();
+      const line = Number(v?.handicap);
+      const odd = Number(v?.odd);
+      if (!Number.isFinite(line) || !Number.isFinite(odd) || odd <= 1) continue;
+      if (!isPlausibleLine(line, bounds)) continue;
+      if (!byLine.has(line)) byLine.set(line, { line, overOdd: null, underOdd: null, bookmaker: 'live' });
+      const agg = byLine.get(line);
+      if (side === 'over') { if (agg.overOdd == null || odd > agg.overOdd) agg.overOdd = odd; }
+      else if (side === 'under') { if (agg.underOdd == null || odd > agg.underOdd) agg.underOdd = odd; }
+    }
+  }
+  // só linhas com over apostável (o motor aposta over ao vivo)
+  return [...byLine.values()].filter((x) => x.overOdd != null).sort((a, b) => a.line - b.line);
+}

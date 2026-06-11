@@ -45,26 +45,26 @@ export const DEFAULT_SETTINGS = {
   window_w2_min: {
     value: 80, type: 'int', group: 'Janelas de entrada', min: 0, max: 90,
     label: 'W2 — início da janela (min)',
-    help: 'Mercado do jogo todo, reta final. Exige favorito não-ganhando e pressão subindo.',
+    help: 'Mercado do jogo todo, reta final. Exige favorito não-ganhando e pressão subindo. O cálculo já mescla os cantos do jogo todo + o ritmo atual + a pressão na reta final.',
     recommended: '80',
   },
   window_w2_max: {
-    value: 90, type: 'int', group: 'Janelas de entrada', min: 0, max: 95,
+    value: 86, type: 'int', group: 'Janelas de entrada', min: 0, max: 95,
     label: 'W2 — fim da janela (min)',
-    help: 'Limite superior da janela do jogo todo.',
-    recommended: '90',
+    help: 'Para de observar aqui pra te sobrar tempo de apostar antes do fim (90). 86 dá ~4 min de folga (tick + odd + sua aposta).',
+    recommended: '86',
   },
   window_1t_min: {
-    value: 22, type: 'int', group: 'Janelas de entrada', min: 0, max: 45,
+    value: 32, type: 'int', group: 'Janelas de entrada', min: 0, max: 45,
     label: '1T — início da janela (min)',
-    help: 'Mercado do 1º tempo; projeta até os 45.',
-    recommended: '22',
+    help: 'Mercado do 1º tempo; projeta cantos até os 45 com base no ritmo do jogo até aqui.',
+    recommended: '32',
   },
   window_1t_max: {
-    value: 40, type: 'int', group: 'Janelas de entrada', min: 0, max: 45,
+    value: 41, type: 'int', group: 'Janelas de entrada', min: 0, max: 45,
     label: '1T — fim da janela (min)',
-    help: 'Limite superior da janela de 1º tempo.',
-    recommended: '40',
+    help: 'Para de observar aqui pra te sobrar tempo de apostar antes do intervalo (45). 41 dá ~4 min de folga.',
+    recommended: '41',
   },
   window_w1_enabled: {
     value: false, type: 'bool', group: 'Janelas de entrada',
@@ -182,6 +182,12 @@ export const DEFAULT_SETTINGS = {
   },
 
   // --- Sistema ---
+  engine_running: {
+    value: false, type: 'bool', group: 'Sistema',
+    label: 'Engine ao vivo ligado',
+    help: 'Estado do motor ao vivo. Ligado/desligado pelo botão no Painel — guardado aqui pra sobreviver a reinícios (no deploy, o container reinicia e zeraria a memória).',
+    recommended: 'ligue pelo Painel',
+  },
   start_with_windows: {
     value: false, type: 'bool', group: 'Sistema',
     label: 'Subir com o Windows',

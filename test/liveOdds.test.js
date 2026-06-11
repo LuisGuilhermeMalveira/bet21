@@ -117,3 +117,29 @@ test('fora da janela: NÃO gasta chamada de odds ao vivo', async () => {
   await liveEngineTick(ctx, {});
   assert.equal(liveOddsCalled, 0, 'aos 60 min (fora de 32-41 e 80-86) não busca odds live');
 });
+
+// ---------- rota de auditoria /api/odds/live-diagnose ----------
+
+test('liveOddsDiagnose devolve cru + parseado', async () => {
+  const { liveOddsDiagnose } = await import('../src/server/controller.js');
+  const db = openDb(':memory:');
+  const ctx = { db, client: { async getLiveOdds(){ return { response: [ liveItem([
+    { id: 33, name: 'Over/Under Corners', values: [
+      { value: 'Over', odd: '1.42', handicap: '12.5', suspended: false },
+      { value: 'Under', odd: '2.67', handicap: '12.5', suspended: false },
+    ] },
+  ]) ] }; } }, secrets: { apiKey: 'x' } };
+  const r = await liveOddsDiagnose(ctx, { fixture: 900 });
+  assert.equal(r.parsedLines.length, 1);
+  assert.equal(r.parsedLines[0].line, 12.5);
+  assert.ok(r.rawCornerMarkets.length >= 1, 'mostra o mercado cru');
+});
+
+test('liveOddsDiagnose: sem cobertura avisa', async () => {
+  const { liveOddsDiagnose } = await import('../src/server/controller.js');
+  const db = openDb(':memory:');
+  const ctx = { db, client: { async getLiveOdds(){ return { response: [] }; } }, secrets: { apiKey: 'x' } };
+  const r = await liveOddsDiagnose(ctx, { fixture: 900 });
+  assert.equal(r.empty, true);
+  assert.match(r.note, /cobertura/i);
+});

@@ -15,6 +15,7 @@ const ROUTES = {
   'GET /api/fixtures/today': (ctx) => C.todayFixtures(ctx),
   'POST /api/odds/capture': (ctx, b) => C.captureOdds(ctx, b),
   'GET /api/odds/diagnose': (ctx, q) => C.diagnose(ctx, q),
+  'GET /api/odds/live-diagnose': (ctx, q) => C.liveOddsDiagnose(ctx, q),
   'GET /api/prelive': (ctx) => C.preliveRoute(ctx),
   'GET /api/signals': (ctx, q) => C.signals(ctx, q),
   'GET /api/accounting': (ctx, q) => C.accounting(ctx, q),

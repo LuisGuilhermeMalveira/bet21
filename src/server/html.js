@@ -303,13 +303,17 @@ export function dashboardHtml() {
       var dotCol = s==='fired'?'#2ea043':(g.line!=null&&g.corners!=null&&(g.line-g.corners)<=2?'#d29922':'#9aa7b4');
       var arrow = g.rising?'<i class="ti ti-trending-up" style="color:#5ad17a;font-size:15px;vertical-align:-3px"></i>':'<i class="ti ti-trending-down" style="color:#9aa7b4;font-size:15px;vertical-align:-3px"></i>';
       var pVal = g.pressure!=null ? '<b style="color:'+(g.rising?'#5ad17a':'#e6edf3')+'">'+g.pressure.toFixed(2)+'</b> '+arrow : '<span class="muted">coletando…</span>';
+      var srcBadge = g.oddsSource==='live'
+        ? ' <span style="font-size:10.5px;color:#5ad17a;border:1px solid #2ea04355;border-radius:5px;padding:1px 5px">odds ao vivo</span>'
+        : ' <span style="font-size:10.5px;color:#9aa7b4;border:1px solid var(--border);border-radius:5px;padding:1px 5px" title="Sem odds ao vivo da API pra esse jogo — usando a pré-jogo">odds pré-jogo</span>';
       var lineRow = (g.line!=null&&g.ev!=null) ? '<div style="margin-top:11px;padding-top:9px;border-top:1px solid var(--border);font-size:12.5px">'
           +(s==='fired'?'over ':'melhor linha ')+'<b>'+g.line+'</b>'+(g.overOdd?(' @ '+g.overOdd):'')
           +(g.prob!=null?(' · prob <b>'+Math.round(g.prob*100)+'%</b>'):'')
-          +' · EV <b style="color:'+(g.ev>=0.03?'#5ad17a':'#e3b341')+'">'+(g.ev>=0?'+':'')+(g.ev*100).toFixed(1)+'%</b></div>'
+          +' · EV <b style="color:'+(g.ev>=0.03?'#5ad17a':'#e3b341')+'">'+(g.ev>=0?'+':'')+(g.ev*100).toFixed(1)+'%</b>'+srcBadge+'</div>'
         : '';
       var statusRow = s==='fired' ? '' :
-        '<div class="muted" style="font-size:12px;margin-top:'+(lineRow?'7px':'10px;padding-top:9px;border-top:1px solid var(--border)')+'"><i class="ti ti-'+(s==='block'?'ban':'clock')+'" style="font-size:13px;vertical-align:-2px"></i> '+g.statusLabel+'</div>';
+        '<div class="muted" style="font-size:12px;margin-top:'+(lineRow?'7px':'10px;padding-top:9px;border-top:1px solid var(--border)')+'"><i class="ti ti-'+(s==='block'?'ban':'clock')+'" style="font-size:13px;vertical-align:-2px"></i> '+g.statusLabel
+        +' <button class="btn ghost sm" data-liveodds="'+g.fixtureId+'" title="Auditar: busca as odds ao vivo da API agora e mostra o que veio" style="margin-left:6px;padding:1px 7px;font-size:11px">odds?</button></div>';
       return '<div class="lcard'+(s==='fired'?' fired':'')+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
           +'<div><div><b>'+g.match+'</b></div><div class="muted" style="font-size:12px">'+(g.minute!=null?g.minute+"'":'')+' · '+g.score+(g.league?(' · '+g.league):'')+'</div></div>'
@@ -709,12 +713,29 @@ export function dashboardHtml() {
     function stopCoveragePoll(){ if(coveragePoll){ clearInterval(coveragePoll); coveragePoll=null; } }
 
     var livePoll=null;
+    function wireLiveAudit(root){
+      root.querySelectorAll('[data-liveodds]').forEach(function(b){
+        b.onclick=function(){
+          b.textContent='...';
+          api.get('/api/odds/live-diagnose?fixture='+b.dataset.liveodds).then(function(d){
+            b.textContent='odds?';
+            if(d.error){ alert('Erro: '+d.error); return; }
+            if(d.empty){ alert(d.note); return; }
+            var txt='LINHAS DE CANTO AO VIVO (o que o motor usa):\\n'
+              +((d.parsedLines||[]).map(function(l){ return '  '+l.line+'  over @ '+l.overOdd+(l.underOdd?('  ·  under @ '+l.underOdd):''); }).join('\\n') || '  (nenhuma extraída)')
+              +'\\n\\nMERCADOS CRUS DA API:\\n'+JSON.stringify(d.rawCornerMarkets, null, 1).slice(0, 1800);
+            alert(txt);
+          });
+        };
+      });
+    }
     function startLivePoll(){
       stopLivePoll();
+      var r0=$('#panel-live'); if(r0) wireLiveAudit(r0);
       livePoll=setInterval(function(){
         var root=$('#panel-live');
         if(!root||$('.tab.active').dataset.tab!=='live'){ stopLivePoll(); return; }
-        api.get('/api/live/state').then(function(d){ Bet21.renderLive(root,d); });
+        api.get('/api/live/state').then(function(d){ Bet21.renderLive(root,d); wireLiveAudit(root); });
       }, 15000);
     }
     function stopLivePoll(){ if(livePoll){ clearInterval(livePoll); livePoll=null; } }

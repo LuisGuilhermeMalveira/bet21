@@ -8,6 +8,7 @@ import { displayLeagueName, countryPt } from '../services/leagueNames.js';
 import { parseFixture } from '../api/statsParser.js';
 import { upsertFixture, refreshMonitoredFlags } from '../services/fixturesSync.js';
 import { captureFixtureOdds, diagnoseCornerOdds } from '../services/oddsCapture.js';
+import { parseLiveCornerLines } from '../api/oddsParser.js';
 import { prelive } from '../services/prelive.js';
 import { evaluateDescalibration, valueConfig } from '../services/descalibration.js';
 import { report } from '../services/accounting.js';
@@ -162,6 +163,29 @@ export async function diagnose(ctx, query) {
   const fixtureId = Number(query.fixture);
   if (!fixtureId) return { error: 'fixture obrigatório' };
   return await diagnoseCornerOdds(ctx, fixtureId);
+}
+
+/**
+ * Diagnóstico de odds AO VIVO: chama /odds/live AGORA pro jogo e devolve
+ * o que a API retornou (mercados crus de cantos) + o que o parser extraiu.
+ * Ferramenta de auditoria: compara com a casa de aposta aberta do lado.
+ */
+export async function liveOddsDiagnose(ctx, query) {
+  requireClient(ctx);
+  const fixtureId = Number(query.fixture);
+  if (!fixtureId) return { error: 'fixture obrigatório' };
+  let res;
+  try { res = await ctx.client.getLiveOdds(fixtureId); }
+  catch (e) { return { fixtureId, error: 'falha ao buscar /odds/live: ' + (e?.message || e) }; }
+  const item = Array.isArray(res?.response) ? res.response[0] : null;
+  if (!item) return { fixtureId, empty: true, note: 'A API não tem odds ao vivo pra esse jogo agora (cobertura varia por jogo/liga).' };
+  // mercados crus que mencionam corner (pra você ver o formato real)
+  const rawCorners = (item.odds || [])
+    .filter((m) => String(m?.name || '').toLowerCase().includes('corner'))
+    .map((m) => ({ id: m.id, name: m.name, values: (m.values || []).slice(0, 12) }));
+  const parsed = parseLiveCornerLines(item);
+  return { fixtureId, rawCornerMarkets: rawCorners, parsedLines: parsed,
+    note: parsed.length ? 'parsedLines = o que o motor usa pro EV.' : 'Nenhuma linha de canto apostável extraída — me mande este JSON se a casa mostra linhas.' };
 }
 
 export function preliveRoute(ctx) {

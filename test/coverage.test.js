@@ -459,3 +459,39 @@ test('backfillLeagueRoute padrão NÃO re-puxa o exhausted', async () => {
   const r = backfillLeagueRoute(ctx, { leagueId: 71 });
   assert.equal(r.started, false, 'nada a puxar — o único time está esgotado');
 });
+
+// ---------- Copa do Mundo: season velha no banco e o "Descobrir times" ----------
+
+test('Descobrir times: season velha (2022) → fallback acha a vigente e auto-corrige', async () => {
+  const db = db0();
+  db.prepare("INSERT INTO leagues (id,name,active,season) VALUES (1,'World Cup',1,2022)").run();
+  const asked = [];
+  const ctx = { db, client: { async getTeams(leagueId, season){
+    asked.push(season);
+    // 2022 não devolve nada (Copa acabou); o ano atual devolve as 48 seleções
+    if (season === 2022) return { response: [] };
+    if (season === new Date().getFullYear()) {
+      return { response: Array.from({ length: 48 }, (_, i) => ({ team: { id: 100 + i, name: 'Sel' + i } })) };
+    }
+    return { response: [] };
+  } } };
+  const r = await syncLeagueTeams(ctx, { onlyLeagueId: 1 });
+  assert.equal(r.teams, 48, 'achou as 48 seleções na temporada vigente');
+  assert.ok(asked.includes(2022), 'tentou a season do banco primeiro');
+  // auto-corrigiu a season da liga
+  assert.equal(db.prepare('SELECT season FROM leagues WHERE id = 1').get().season, new Date().getFullYear());
+  // e agora a Copa APARECE na aba Dados (tem times)
+  const cov = coverageByLeague(db, { minGames: 20 });
+  const copa = cov.leagues.find((L) => L.id === 1);
+  assert.ok(copa, 'Copa aparece na cobertura');
+  assert.equal(copa.total, 48);
+});
+
+test('Descobrir times: season do banco ok → 1 chamada só, sem fallback', async () => {
+  const db = db0();
+  db.prepare("INSERT INTO leagues (id,name,active,season) VALUES (39,'PL',1,2025)").run();
+  let calls = 0;
+  const ctx = { db, client: { async getTeams(){ calls++; return { response: [ { team: { id: 1, name: 'A' } } ] }; } } };
+  await syncLeagueTeams(ctx, { onlyLeagueId: 39 });
+  assert.equal(calls, 1, 'não gasta chamada extra quando a primeira funciona');
+});

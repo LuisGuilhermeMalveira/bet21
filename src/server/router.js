@@ -20,6 +20,7 @@ const ROUTES = {
   'GET /api/signals': (ctx, q) => C.signals(ctx, q),
   'GET /api/accounting': (ctx, q) => C.accounting(ctx, q),
   'GET /api/backtest': (ctx) => C.backtestRoute(ctx),
+  'GET /api/strategy/backtest': (ctx) => C.strategyBacktestRoute(ctx),
   'GET /api/config': (ctx) => C.getConfig(ctx),
   'POST /api/config': (ctx, b) => C.setConfig(ctx, b),
   'POST /api/engine': (ctx, b) => C.toggleEngine(ctx, b),

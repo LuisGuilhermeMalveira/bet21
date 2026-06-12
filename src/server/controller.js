@@ -12,7 +12,7 @@ import { parseLiveCornerLines } from '../api/oddsParser.js';
 import { prelive } from '../services/prelive.js';
 import { evaluateDescalibration, valueConfig } from '../services/descalibration.js';
 import { report } from '../services/accounting.js';
-import { backtest } from '../services/backtest.js';
+import { backtest, strategyBacktest } from '../services/backtest.js';
 import { runSettle } from '../services/settle.js';
 import { runBackfill, activeTeamIds, splitByHistory, coverageByLeague, backfillTeam, RequestBudget, statsCountByTeam } from '../services/backfill.js';
 import { simulate } from '../services/simulation.js';
@@ -232,6 +232,10 @@ export function accounting(ctx, query) {
 
 export function backtestRoute(ctx) {
   return backtest(ctx.db, {});
+}
+
+export function strategyBacktestRoute(ctx) {
+  return strategyBacktest(ctx.db, {});
 }
 
 export function getConfig(ctx) {

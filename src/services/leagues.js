@@ -109,14 +109,29 @@ export async function syncLeagueTeams(ctx, { onlyLeagueId } = {}) {
   let leagues = 0, teams = 0, spent = 0, errors = 0;
   for (const lg of rows) {
     try {
-      const res = await client.getTeams(lg.id, lg.season);
-      spent += 1;
-      if (!res?.empty && Array.isArray(res?.response)) {
-        for (const item of res.response) {
+      // Temporadas candidatas, em ordem: a do banco, a dos jogos já sincronizados
+      // dessa liga (fonte mais confiável da vigente) e o ano atual. A do banco pode
+      // estar velha (ex.: Copa do Mundo gravada como 2022 → /teams volta vazio).
+      const fxSeason = db.prepare('SELECT MAX(season) AS s FROM fixtures WHERE league_id = ?').get(lg.id)?.s;
+      const candidates = [...new Set([lg.season, fxSeason, new Date().getFullYear()].filter((s) => s != null))];
+      let stored = 0, usedSeason = null;
+      for (const season of candidates) {
+        const res = await client.getTeams(lg.id, season);
+        spent += 1;
+        const list = (!res?.empty && Array.isArray(res?.response)) ? res.response : [];
+        if (list.length === 0) continue; // temporada sem times → tenta a próxima
+        for (const item of list) {
           const t = item?.team;
-          if (t?.id != null) { ins.run(lg.id, t.id, t.name || `#${t.id}`, lg.season ?? null, now); teams += 1; }
+          if (t?.id != null) { ins.run(lg.id, t.id, t.name || `#${t.id}`, season, now); stored += 1; }
         }
+        usedSeason = season;
+        break;
       }
+      // Auto-corrige a temporada da liga se achamos times numa mais nova.
+      if (usedSeason != null && usedSeason !== lg.season) {
+        db.prepare('UPDATE leagues SET season = ? WHERE id = ?').run(usedSeason, lg.id);
+      }
+      teams += stored;
       leagues += 1;
     } catch {
       errors += 1;

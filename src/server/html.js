@@ -9,6 +9,7 @@ export const TABS = [
   { id: 'dados', label: 'Dados' },
   { id: 'sinais', label: 'Sinais' },
   { id: 'historico', label: 'Histórico' },
+  { id: 'estrategia', label: 'Estratégia' },
   { id: 'contabilidade', label: 'Contabilidade' },
   { id: 'config', label: 'Configuração' },
   { id: 'ligas', label: 'Ligas' },
@@ -461,6 +462,57 @@ export function dashboardHtml() {
     return root;
   };
 
+  Bet21.renderStrategy = function(root, data){
+    // Bloco 1: a estratégia explicada (sempre visível)
+    var explain = '<div class="card"><h2 style="margin-top:0">A estratégia do Bet21</h2>'
+      +'<p style="margin:6px 0">O app caça <b>preço errado</b> em escanteios — não "jogo que vai ter canto". O fluxo:</p>'
+      +'<p style="margin:6px 0"><b>1. Modelo (λ).</b> Pra cada jogo, estima o total de cantos a partir do histórico recente dos dois times (ataque/defesa de cantos, com peso maior nos jogos recentes).</p>'
+      +'<p style="margin:6px 0"><b>2. Pré-live (descalibração).</b> Compara o λ com as odds das casas. Se o modelo discorda o suficiente (EV ≥ corte) <b>e a Pinnacle concorda com o lado</b>, vira sinal — over ou under.</p>'
+      +'<p style="margin:6px 0"><b>3. Ao vivo (W2/1T).</b> Na reta final (80–86) ou no 1º tempo (32–41), mescla o ritmo do jogo + quem precisa do resultado + pressão subindo, contra as <b>odds ao vivo</b>.</p>'
+      +'<p style="margin:6px 0"><b>4. Juiz.</b> Tudo em paper-trade; a métrica que decide é o <b>CLV</b> (bater a linha de fechamento), não o resultado de um jogo.</p></div>';
+    var btn = '<div class="card"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'
+      +'<div><h2 style="margin:0">E se o app existisse no passado?</h2>'
+      +'<span class="muted" style="font-size:12.5px">Roda a estratégia sobre todos os jogos guardados das ligas ativas, sem olhar o futuro de cada jogo. Não gasta API.</span></div>'
+      +'<button class="btn" id="runStrategyBt">Testar no passado</button></div>'
+      +'<div id="stratResult" style="margin-top:12px"></div></div>';
+    root.innerHTML = explain + btn;
+    return root;
+  };
+
+  Bet21.renderStrategyResult = function(box, d){
+    if(!d || d.error){ box.innerHTML='<p class="muted">'+((d&&d.error)||'Falhou.')+'</p>'; return; }
+    var ok = d.improvementPct!=null && d.improvementPct>0;
+    var verdict='<div class="disclaimer" style="border-color:'+(ok?'#2ea04366':'#da363366')+'">'+(ok?'✅ ':'⚠️ ')+d.verdict+'</div>';
+    var kpis='<div class="grid kpis" style="margin-top:10px">'
+      +'<div class="kpi"><div class="n">'+d.evaluated+'</div><div class="k">jogos testados</div></div>'
+      +'<div class="kpi"><div class="n">'+(d.maeModel!=null?d.maeModel.toFixed(2):'—')+'</div><div class="k">erro do modelo (cantos)</div></div>'
+      +'<div class="kpi"><div class="n">'+(d.maeBaseline!=null?d.maeBaseline.toFixed(2):'—')+'</div><div class="k">erro "chutar a média"</div></div>'
+      +'<div class="kpi'+(ok?' clv':'')+'"><div class="n">'+(d.improvementPct!=null?((d.improvementPct>=0?'+':'')+d.improvementPct.toFixed(1)+'%'):'—')+'</div><div class="k">modelo vs média</div></div>'
+      +'<div class="kpi"><div class="n">'+(d.bias!=null?((d.bias>=0?'+':'')+d.bias.toFixed(2)):'—')+'</div><div class="k">viés (real − modelo)</div></div>'
+      +'</div>';
+    var simH='';
+    if(d.simulation && d.simulation.nBets>0){
+      var s=d.simulation;
+      simH='<h3 style="margin:16px 0 6px">Simulação de apostas (odds sintéticas '+s.oddSynthetic.toFixed(2)+')</h3>'
+        +'<p class="muted" style="font-size:12px;margin:0 0 8px">Aplica a MESMA regra do app (EV ≥ '+(s.evMin*100).toFixed(0)+'%, prob ≥ '+(s.probMin*100).toFixed(0)+'%) contra a linha média de cada liga até a data. <b>Odds reais do passado não existem no banco</b> — isto mede se o modelo acha desvios; lucro real só o CLV do paper-trade prova.</p>'
+        +'<div class="grid kpis">'
+        +'<div class="kpi"><div class="n">'+s.nBets+'</div><div class="k">apostas ('+s.nOver+' over · '+s.nUnder+' under)</div></div>'
+        +'<div class="kpi"><div class="n">'+(s.hitRate!=null?Math.round(s.hitRate*100)+'%':'—')+'</div><div class="k">acerto</div></div>'
+        +'<div class="kpi"><div class="n '+((s.profit||0)>=0?'pos':'neg')+'">'+(s.profit>=0?'+':'')+s.profit.toFixed(1)+'u</div><div class="k">lucro simulado</div></div>'
+        +'<div class="kpi"><div class="n">'+(s.roi!=null?((s.roi>=0?'+':'')+(s.roi*100).toFixed(1)+'%'):'—')+'</div><div class="k">ROI simulado</div></div></div>';
+    } else { simH='<p class="muted" style="margin-top:12px">Simulação: nenhuma aposta passou nos cortes (ou faltou base de linha por liga).</p>'; }
+    var lgH='';
+    if(d.leagues && d.leagues.length){
+      lgH='<h3 style="margin:16px 0 6px">Viés por liga <span class="muted" style="font-size:12px;font-weight:400">(positivo = sai MAIS canto que o modelo prevê → cuidado com unders nessa liga)</span></h3>'
+        +'<table><thead><tr><th>Liga</th><th>Jogos</th><th>Erro médio</th><th>Viés</th></tr></thead><tbody>'
+        +d.leagues.map(function(l){
+          var col = Math.abs(l.bias)>=1 ? (l.bias>0?'#e3b341':'#79b8ff') : 'inherit';
+          return '<tr><td>'+l.name+'</td><td class="muted">'+l.n+'</td><td>'+l.mae.toFixed(2)+'</td><td style="color:'+col+';font-weight:'+(Math.abs(l.bias)>=1?'600':'400')+'">'+(l.bias>=0?'+':'')+l.bias.toFixed(2)+'</td></tr>';
+        }).join('')+'</tbody></table>';
+    }
+    box.innerHTML = verdict + kpis + simH + lgH;
+  };
+
   Bet21.renderAccounting = function(root, data){
     const s=data.summary||{};
     const warn = s.smallSampleNote? '<div class="disclaimer">⚠ '+s.smallSampleNote+'</div>':'';
@@ -619,7 +671,7 @@ export function dashboardHtml() {
     return id;
   };
   // ids de aba válidos (pra validar o hash)
-  Bet21._validTab = function(id){ return ['painel','prelive','live','dados','sinais','historico','contabilidade','config','ligas'].indexOf(id)>=0; };
+  Bet21._validTab = function(id){ return ['painel','prelive','live','dados','sinais','historico','estrategia','contabilidade','config','ligas'].indexOf(id)>=0; };
 
   // ---------- WIRING (só no navegador; jsdom não dispara isto) ----------
   Bet21.init = function(){
@@ -639,6 +691,7 @@ export function dashboardHtml() {
       else if(id==='dados'){ loadCoverage(); }
       else if(id==='sinais'){ api.get('/api/signals?status=pending').then(function(d){ Bet21.renderSignals(root,d,'pending'); }); }
       else if(id==='historico'){ api.get('/api/signals?status=settled').then(function(d){ Bet21.renderSignals(root,d,'settled'); }); }
+      else if(id==='estrategia'){ Bet21.renderStrategy(root,{}); wireStrategy(root); }
       else if(id==='contabilidade'){ api.get('/api/accounting').then(function(d){ Bet21.renderAccounting(root,d); wireAccounting(root); }); }
       else if(id==='config'){ api.get('/api/config').then(function(d){ Bet21.renderConfig(root,d); wireConfig(root); }); }
       else if(id==='ligas'){ api.get('/api/leagues').then(function(d){ Bet21.renderLeagues(root,d); wireLeagues(root); }); }
@@ -713,6 +766,17 @@ export function dashboardHtml() {
     function stopCoveragePoll(){ if(coveragePoll){ clearInterval(coveragePoll); coveragePoll=null; } }
 
     var livePoll=null;
+    function wireStrategy(root){
+      var b=$('#runStrategyBt',root); if(!b) return;
+      b.onclick=function(){
+        b.disabled=true; var o=b.textContent; b.textContent='testando o passado…';
+        var box=$('#stratResult',root); if(box) box.innerHTML='<p class="muted">Rodando a estratégia sobre os jogos guardados (pode levar alguns segundos)…</p>';
+        api.get('/api/strategy/backtest').then(function(d){
+          b.disabled=false; b.textContent=o;
+          if(box) Bet21.renderStrategyResult(box, d);
+        }).catch(function(){ b.disabled=false; b.textContent=o; if(box) box.innerHTML='<p class="muted">Falhou — veja os eventos no Painel.</p>'; });
+      };
+    }
     function wireLiveAudit(root){
       root.querySelectorAll('[data-liveodds]').forEach(function(b){
         b.onclick=function(){

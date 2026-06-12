@@ -106,7 +106,9 @@ export async function syncFixtures(ctx, body) {
   let synced = 0, spent = 0, errors = 0;
   for (const lg of leaguesActive) {
     try {
-      const res = await ctx.client.getFixtures({ league: lg.id, season: lg.season, next: perLeague }, { priority: 'normal' });
+      // SEM season: "próximos N" já são da temporada vigente. Passar season quebra
+      // quando ela está desatualizada no banco (ex.: Copa do Mundo gravada como 2022).
+      const res = await ctx.client.getFixtures({ league: lg.id, next: perLeague }, { priority: 'normal' });
       spent += 1;
       if (!res?.empty && Array.isArray(res?.response)) {
         for (const item of res.response) { const pf = parseFixture(item); if (pf.id != null) { upsertFixture(db, pf); synced += 1; } }

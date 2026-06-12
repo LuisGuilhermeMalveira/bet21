@@ -25,7 +25,10 @@ test('syncFixtures (modo próximos): 1 req por liga ativa, usa next', async () =
   assert.equal(r.spent, 2, '1 requisição por liga ativa');
   assert.equal(calls.length, 2);
   assert.ok(calls.every((c) => c.next != null), 'usa o parâmetro next');
-  assert.ok(calls.every((c) => c.league && c.season), 'passa league e season');
+  assert.ok(calls.every((c) => c.league != null), 'passa league');
+  // NÃO passa season: "próximos N" são da temporada vigente; season velha no banco
+  // (ex.: Copa do Mundo gravada como 2022) fazia a busca voltar vazia.
+  assert.ok(calls.every((c) => c.season === undefined), 'não passa season com next');
   // gravou os jogos
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM fixtures').get().n, 2);
 });
@@ -44,4 +47,25 @@ test('syncFixtures modo legado (data) ainda funciona', async () => {
   const r = await syncFixtures({ db, client }, { date: '2026-06-01' });
   assert.equal(usedDate, '2026-06-01', 'busca a data quando fornecida');
   assert.equal(r.date, '2026-06-01');
+});
+
+test('Copa do Mundo com season velha no banco: sync traz os jogos vigentes mesmo assim', async () => {
+  const db = db0();
+  // a liga ficou gravada com a temporada ANTIGA (2022) — o caso real do usuário
+  db.prepare("INSERT INTO leagues (id,name,active,season) VALUES (1,'World Cup',1,2022)").run();
+  const client = { async getFixtures(params){
+    // a API, SEM season, devolve os próximos da temporada vigente (2026)
+    assert.equal(params.season, undefined, 'não restringe por season');
+    return { response: [
+      { fixture: { id: 5001, timestamp: Math.floor(Date.now()/1000)+3*86400, status: { short:'NS', long:'NS', elapsed:null } },
+        league: { id: 1, season: 2026 },
+        teams: { home: { id: 6, name: 'Brazil' }, away: { id: 31, name: 'Morocco' } },
+        goals: { home: null, away: null }, score: { halftime: {} } },
+    ] };
+  } };
+  const r = await syncFixtures({ db, client }, {});
+  assert.equal(r.synced, 1, 'o jogo da Copa 2026 entrou');
+  const fx = db.prepare('SELECT * FROM fixtures WHERE id = 5001').get();
+  assert.equal(fx.season, 2026, 'a season do JOGO vem da resposta (2026), não do banco velho');
+  assert.match(fx.home_team, /Brazil/);
 });
